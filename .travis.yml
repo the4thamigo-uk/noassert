@@ -1,0 +1,45 @@
+language: go
+go: 
+  - 1.x
+
+install:
+  - go get
+  - go get github.com/golang/lint/golint
+  - go get github.com/modocache/gover
+  - go get github.com/mattn/goveralls
+  - go get github.com/gordonklaus/ineffassign
+  - go get github.com/fzipp/gocyclo
+  - go get honnef.co/go/tools/cmd/megacheck
+
+script:
+  - test -z "$(gofmt -s -l . 2>&1 | grep -v vendor | tee /dev/stderr)"
+  - go vet ./...
+  - golint -set_exit_status ./...
+  - ineffassign ./...
+  - gocyclo -over 15 .
+  - megacheck -simple.exit-non-zero=true -staticcheck.exit-non-zero=true -unused.exit-non-zero=true ./...
+  - go test -coverprofile .coverprofile ./...
+  - $GOPATH/bin/goveralls -v -coverprofile .coverprofile -service=travis-ci
+
+before_deploy:
+  - CGO_ENABLED=0 GOOS=linux go build -a -o releases/noassert  -ldflags "-s -w -X main.version=$TRAVIS_TAG" ./noassert
+  - tar -czf releases/noassert.linux-amd64.tar.gz -C releases noassert
+  - CGO_ENABLED=0 GOOS=darwin go build -a -o releases/noassert -ldflags "-s -w -X main.version=$TRAVIS_TAG" ./noassert
+  - tar -czf releases/noassert.darwin-amd64.tar.gz -C releases noassert
+  - CGO_ENABLED=0 GOOS=windows go build -a -o releases/noassert.exe -ldflags "-s -w -X main.version=$TRAVIS_TAG" ./noassert
+  - tar -czf releases/noassert.windows-amd64.tar.gz -C releases noassert.exe
+  - cd releases
+  - sha256sum *.tar.gz > sha256sum.txt
+  - cd ..
+
+deploy:
+  provider: releases
+  api_key: $GITHUB_TOKEN_KEY
+  file:
+    - "releases/noassert.linux-amd64.tar.gz"
+    - "releases/noassert.darwin-amd64.tar.gz"
+    - "releases/noassert.windows-amd64.tar.gz"
+    - "releases/sha256sum.txt"
+  skip_cleanup: true
+  on:
+    tags: true
